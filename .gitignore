@@ -1,0 +1,8 @@
+# IDE Files
+.idea/
+
+# Output files
+ebin/
+
+# Crash Dump Files
+**/*.dump
