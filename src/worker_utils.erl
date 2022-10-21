@@ -24,4 +24,9 @@ wait_and_get_succ() ->
   end.
 
 is_between(CheckHash, StartHash, EndHash) ->
-  CheckHash > StartHash andalso CheckHash =< EndHash.
+  Result = if
+    StartHash > EndHash -> CheckHash =< EndHash;
+    true -> CheckHash > StartHash andalso CheckHash =< EndHash
+  end,
+  Result.
+
