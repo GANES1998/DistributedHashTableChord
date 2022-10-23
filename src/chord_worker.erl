@@ -172,7 +172,7 @@ main_loop(CurrentHash, Pred, Successor, FingerTable) ->
     %% You
     _ -> io:format("RISK - RANDOM MESSAGE APPEARED")
   after 20000 ->
-    io:format("Node [~p] is idle for 20000 seconds. So, terminating~n", [CurrentHash]),
+%%    io:format("Node [~p] is idle for 20000 seconds. So, terminating~n", [CurrentHash]),
 
     %% Send terminate id to the help,
     sup_pid ! {terminate, {CurrentHash, self()}}
@@ -181,7 +181,7 @@ main_loop(CurrentHash, Pred, Successor, FingerTable) ->
 main(CurrentHash, NumRequest) ->
 
   %% Console print that a new node is initialized
-  io:format("~p Node started and it is waiting for successor~n", [CurrentHash]),
+%%  io:format("~p Node started and it is waiting for successor~n", [CurrentHash]),
 
   %% Get the successor hash and successor PID from supervisor.
   {{PredecessorHash, PredecessorPid}, {SuccessorHash, SuccessorPid}} = wait_and_get_adj(),

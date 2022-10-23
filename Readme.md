@@ -1,4 +1,4 @@
-## Erlang Distributed Hash Table (Chord Protocol) Mining Simulation.
+## Erlang Distributed Hash Table (Chord Protocol) Simulation.
 
 This is the actor model based bitcoin mining system in erlang submitted in response
 to [project 3](https://ufl.instructure.com/courses/467300/assignments/5383670)
@@ -25,20 +25,26 @@ of [COP5615](https://ufl.instructure.com/courses/467300).
 
 #### Assumptions
 
-1. We are using 32 bit hash. Since sha1 generates 160 bit hash, we mimic 32 bit hash using random number between 0, $2^{32} - 1S (inclusive).
+1. We are using 32 bit hash. Since sha1 generates 160 bit hash, we mimic 32 bit hash using random number between 0, $2^{32} - 1$ (inclusive).
 2. Same, For generating any request, we assume a string is taken and is hashed. We generate hash using the same strategy as above (random 32 bit number).
 3. We assume, it is okay for requests to get lost, and when request hops for more than 32 times (unlikely in normal times), we discard the request.
 4. Since, each node doesn't know all of the peers, We mimic it through supervisor, which redirects a nodes request to another random node.
-
-#### Architecture
-
-```mermaid 
-flowchart LR;
-
-
-```
+5. Since we cannot kill a node after it has send required no of requests (as it will be required for processing other requests), we kill a node by inactivity of 20 seconds.
+6. The supervisor will keep updating the statistics for each message until no message is obtained for continuous 20 seconds. (For faster termination).
 
 #### Screenshots
+
+Result (Avg Hops Count)
+![img.png](doc/assets/result.png)
+
+Successfully Stored Record with Hash. (Request Success).
+![img.png](doc/assets/success_storage_log.png)
+
+Finger Table Calculation - For easy printing to console, we are using 6 bit hash and 10 nodes and 3 requests/node.
+![img.png](doc/assets/finger_calculation_success.png)
+
+Message getting hopped to next nodes based on finger table.
+![img.png](doc/assets/worker_hop_log.png)
 
 #### Answers
 
