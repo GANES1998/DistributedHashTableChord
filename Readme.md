@@ -35,15 +35,19 @@ of [COP5615](https://ufl.instructure.com/courses/467300).
 #### Screenshots
 
 Result (Avg Hops Count)
+
 ![img.png](doc/assets/result.png)
 
 Successfully Stored Record with Hash. (Request Success).
+
 ![img.png](doc/assets/success_storage_log.png)
 
 Finger Table Calculation - For easy printing to console, we are using 6 bit hash and 10 nodes and 3 requests/node.
+
 ![img.png](doc/assets/finger_calculation_success.png)
 
 Message getting hopped to next nodes based on finger table.
+
 ![img.png](doc/assets/worker_hop_log.png)
 
 #### Answers
