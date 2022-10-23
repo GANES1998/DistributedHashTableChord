@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(chord_supervisor).
 -author("ganesonravichandran").
--define(BITCOUNT, 10).
+-define(BITCOUNT, 32).
 
 %% API
 -export([spawn_chord_nodes/3, initiate_chord/2, send_pred_successor/3]).
@@ -16,7 +16,7 @@
 spawn_chord_nodes(CurrentNodeNum, MaxNodes, SpawnedNodesMap) ->
   if
     CurrentNodeNum > MaxNodes ->
-      io:format("All nodes spawned ~n as ~p", [SpawnedNodesMap]),
+      io:format("All nodes spawned ~n"),
       % Return the spawned node mapping
       SpawnedNodesMap;
     true ->
@@ -39,6 +39,10 @@ send_pred_successor(Iterator, NumNodes, NodesPidList) ->
       %% Get the index of previous and successor nodes
       PrevIter = util:get_prev_node_index(Iterator, NumNodes),
       SuccIter = util:get_succ_node_index(Iterator, NumNodes),
+
+      io:format("NOT BREAKING ~p~n", [lists:flatlength(NodesPidList)]),
+      io:format("NTH ~p", [PrevIter]),
+      io:format("~p", [lists:nth(PrevIter, NodesPidList)]),
 
       %% Get the hash and pid of the previous and successor nodes
       {PrevHash, PrevPid} = lists:nth(PrevIter, NodesPidList),
@@ -68,7 +72,7 @@ listen_to_workers(CurrentNode, NumNodes, SortedNodesList, NumMessages, Hops) ->
           HashToStore = rand:uniform(trunc(math:pow(2, ?BITCOUNT))),
 
           %% Send to the chosen Random index node
-          RandomPid ! {hash_request, {HashToStore, HashToStore, {SenderHash, SenderPid}, 0}},
+          RandomPid ! {hash_request, {HashToStore, HashToStore, {SenderHash, SenderPid}, 1}},
 
           %% Log a send
           io:format("[~p] Send Request [Hash = ~p] to [~p](~p)~n", [SenderHash, HashToStore, RandomHash, RandomPid]),
@@ -77,7 +81,7 @@ listen_to_workers(CurrentNode, NumNodes, SortedNodesList, NumMessages, Hops) ->
           listen_to_workers(CurrentNode, NumNodes, SortedNodesList, NumMessages, Hops);
         %% A successfully stored message
         {success, {_, _, _, HopCount}} ->
-          io:format("Success message with hops [~p]~n", [Hops]),
+          io:format("Success message with hops [~p]~n", [HopCount]),
           %% Iterate by adding number of messages and hop count
           listen_to_workers(CurrentNode, NumNodes, SortedNodesList, NumMessages + 1, Hops + HopCount);
         {terminate, {Hash, _Pid}} ->
@@ -85,6 +89,9 @@ listen_to_workers(CurrentNode, NumNodes, SortedNodesList, NumMessages, Hops) ->
           io:format("Node [~p] terminated~n", [Hash]),
 
           listen_to_workers(CurrentNode + 1, NumNodes, SortedNodesList, NumMessages, Hops)
+        after 20000 ->
+          io:format("[~p] out of [~p] (~p%) workers terminated successfully executing [~p] Messages with [~p] Hops~n", [CurrentNode, NumNodes, (CurrentNode / NumNodes  * 100), NumMessages, Hops]),
+          {NumMessages, Hops}
       end
   end.
 
@@ -95,6 +102,12 @@ initiate_chord(NumNodes, _NumRequests) ->
   % Spawn the number of nodes.
   NodePidMap = spawn_chord_nodes(1, NumNodes, orddict:new()),
   SortedNodesList = orddict:to_list(NodePidMap),
+
+  %% Sorted Nodes List is
+
+  io:format("Sorted Nodes are [~p]~n", [SortedNodesList]),
+  %% Sleep to make sure all nodes are spawned.
+  timer:sleep(5000),
 
   %% Send prev and succ to the nodes as initializing.
   send_pred_successor(1, NumNodes, SortedNodesList),
@@ -123,5 +136,5 @@ initiate_chord(NumNodes, _NumRequests) ->
   {Messages, Hops} = listen_to_workers(1, NumNodes, SortedNodesList, 0, 0),
 
   %% Converge and exit
-  io:format("Average Hops count [~p]", [Messages / Hops]).
+  io:format("Average Hops count [~p]", [Hops / Messages]).
 

@@ -10,7 +10,7 @@
 -author("ganesonravichandran").
 
 %% API
--export([wait_and_get_prev/0, wait_and_get_succ/0, is_between/3, check_valid_key/3, get_next_node/3]).
+-export([wait_and_get_prev/0, wait_and_get_succ/0, is_between/3, check_valid_key/3, get_next_node/3, wait_and_get_finger_table/0]).
 
 
 %% Read the previous node of any worker
@@ -25,6 +25,12 @@ wait_and_get_succ() ->
   receive
     {succ_node, {SuccNodeHash, SuccNodePid}} ->
       {SuccNodeHash, SuccNodePid}
+  end.
+
+wait_and_get_finger_table() ->
+  receive
+    {finger_table, FingerTable} ->
+      FingerTable
   end.
 
 %% Check if the hash is between in a circular ring.
