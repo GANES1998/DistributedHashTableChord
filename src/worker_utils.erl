@@ -52,7 +52,7 @@ get_finger_node([FirstSortedNode|RemainingNodes], CheckHash) ->
   {_, {FirstNodeHash, _}} = FirstSortedNode,
   {_, {NextNodeHash, _}} = SecondNode,
 
-  IsBetween = is_between(CheckHash, FirstSortedNode, NextNodeHash),
+  IsBetween = is_between(CheckHash, FirstNodeHash, NextNodeHash),
 
   if
     IsBetween -> FirstSortedNode;
