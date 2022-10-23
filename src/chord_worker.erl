@@ -178,7 +178,7 @@ main_loop(CurrentHash, Pred, Successor, FingerTable) ->
     sup_pid ! {terminate, {CurrentHash, self()}}
   end.
 
-main(CurrentHash, _SupervisorPid) ->
+main(CurrentHash, NumRequest) ->
 
   %% Console print that a new node is initialized
   io:format("~p Node started and it is waiting for successor~n", [CurrentHash]),
@@ -194,15 +194,15 @@ main(CurrentHash, _SupervisorPid) ->
 %%   Schedule stabilize to self in timer.
 %%  initiate_self_stabilization(),
 
+  %% Get Initial Finger Table
+  FingerTable = worker_utils:wait_and_get_finger_table(),
+  io:format("Finger Table Calculated for node [ ~p ] is  [~p]~n", [CurrentHash, orddict:to_list(FingerTable)]),
+
   %% Initiate sending storage request to random nodes.
   TimerRef = initialize_trigger_request(),
 
   %% KillTimer After Some Seconds.
-  timer:apply_after(4 * 1000, ?MODULE, stop_timer, [TimerRef, CurrentHash]),
-
-  %% Get Initial Finger Table
-  FingerTable = worker_utils:wait_and_get_finger_table(),
-  io:format("Finger Table Calculated for node [ ~p ] is  [~p]~n", [CurrentHash, orddict:to_list(FingerTable)]),
+  timer:apply_after(NumRequest * 1000, ?MODULE, stop_timer, [TimerRef, CurrentHash]),
 
 %%   Got To Main Loop
   main_loop(CurrentHash, {PredecessorHash, PredecessorPid}, {SuccessorHash, SuccessorPid}, FingerTable).

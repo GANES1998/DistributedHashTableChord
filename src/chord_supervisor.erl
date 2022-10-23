@@ -11,9 +11,9 @@
 -define(BITCOUNT, 32).
 
 %% API
--export([spawn_chord_nodes/3, initiate_chord/2, send_pred_successor/3]).
+-export([spawn_chord_nodes/4, initiate_chord/2, send_pred_successor/3]).
 
-spawn_chord_nodes(CurrentNodeNum, MaxNodes, SpawnedNodesMap) ->
+spawn_chord_nodes(CurrentNodeNum, MaxNodes, NumRequests, SpawnedNodesMap) ->
   if
     CurrentNodeNum > MaxNodes ->
       io:format("All nodes spawned ~n"),
@@ -25,9 +25,9 @@ spawn_chord_nodes(CurrentNodeNum, MaxNodes, SpawnedNodesMap) ->
       % Use a 30 Bit Random number in place of hash
       CurrentHash = rand:uniform(trunc(math:pow(2, ?BITCOUNT))),
       % Spawn and link the new node
-      Pid = spawn_link(node(), chord_worker, main, [CurrentHash, self()]),
+      Pid = spawn_link(node(), chord_worker, main, [CurrentHash, NumRequests]),
       %% Spawn the next node
-      spawn_chord_nodes(CurrentNodeNum + 1, MaxNodes, orddict:store(CurrentHash, Pid, SpawnedNodesMap))
+      spawn_chord_nodes(CurrentNodeNum + 1, MaxNodes, NumRequests, orddict:store(CurrentHash, Pid, SpawnedNodesMap))
   end.
 
 %% Send all nodes their predecessor and successor.
@@ -95,12 +95,12 @@ listen_to_workers(CurrentNode, NumNodes, SortedNodesList, NumMessages, Hops) ->
       end
   end.
 
-initiate_chord(NumNodes, _NumRequests) ->
+initiate_chord(NumNodes, NumRequests) ->
   % Register Pid
   register(sup_pid, self()),
 
   % Spawn the number of nodes.
-  NodePidMap = spawn_chord_nodes(1, NumNodes, orddict:new()),
+  NodePidMap = spawn_chord_nodes(1, NumNodes, NumRequests, orddict:new()),
   SortedNodesList = orddict:to_list(NodePidMap),
 
   %% Sorted Nodes List is
