@@ -9,9 +9,10 @@
 -module(chord_worker).
 -author("ganesonravichandran").
 -define(STABILE_INTERVAL, 100).
+-define(sup_pid, sup_pid).
 
 %% API
--export([main/1]).
+-export([main/2, main_loop/4]).
 
 %%% Wait for the initial time to get the hash and pid of previous and next nodes.
 wait_and_get_adj() ->
@@ -22,7 +23,7 @@ wait_and_get_adj() ->
 
 %% Send stabile message to same worker at regular intervals
 initiate_self_stabilization() ->
-  timer:inter(?STABILE_INTERVAL, chord_worker, stabilize).
+  timer:send_interval(?STABILE_INTERVAL, chord_worker, stabilize).
 
 %% handle_predecessor_request
 handle_pred_request(CallerPid, CurrentHash) ->
@@ -30,12 +31,12 @@ handle_pred_request(CallerPid, CurrentHash) ->
   CallerPid ! {CurrentHash, self()}.
 
 %% Handle predecessor notifications, When a pred sends that it could be a pred
-handle_pred_notification(CurrentPred, CurrentHash, {NewPredHash, NewPredPid}, Successor) ->
+handle_pred_notification(CurrentPred, CurrentHash, {NewPredHash, NewPredPid}, Successor, FingerTable) ->
 
   %% If there is no current predecessor, then set it as current pred
   case CurrentPred of
     %% If there is no pred, set new Pred as current pred
-    none -> main_loop(CurrentHash, {NewPredPid, NewPredHash}, Successor);
+    none -> main_loop(CurrentHash, {NewPredPid, NewPredHash}, Successor, FingerTable);
     %% There exist a CurrentPred
     {CurrentPredHash, _} ->
       %% If the new pred is between CurrentPred and Current Hash
@@ -43,10 +44,10 @@ handle_pred_notification(CurrentPred, CurrentHash, {NewPredHash, NewPredPid}, Su
       if
         IsBetween ->
           %% If the new pred is between CurrentPred and Current Hash, Update the pred to incoming pred
-          main_loop(CurrentHash, {NewPredHash, NewPredPid}, Successor);
+          main_loop(CurrentHash, {NewPredHash, NewPredPid}, Successor, FingerTable);
         true ->
           %% Do nothing, loop on
-          main_loop(CurrentHash, CurrentPred, Successor)
+          main_loop(CurrentHash, CurrentPred, Successor, FingerTable)
       end
   end.
 
@@ -61,7 +62,7 @@ stabilize(CurrentPred, CurrentHash, {SuccessorHash, SuccPid}) ->
     {pred_success, Pred} ->
       case Pred of
         %% If predecessor of success is same, then no need to update predecssors
-        {CurrentHash, _} ->  done;
+        {CurrentHash, _} -> done;
         %% No pred, when a node joins
         nil ->
           %% Notify about existence -
@@ -73,55 +74,119 @@ stabilize(CurrentPred, CurrentHash, {SuccessorHash, SuccPid}) ->
           %% Check if this node is between Current Pred and Current Succ:
           IsBetween = worker_utils:is_between(NewPredHash, CurrentHash, SuccessorHash),
           if
-              %% Slide the current node between both the nodes. Update the predecessor.
-             IsBetween ->
-                  stabilize(CurrentPred, CurrentHash, {NewPredHash, NewPredPid});
-              %% Add the current node's successor as predeccessor
-             true ->
-               {notify_could_be_pred, {CurrentHash, self()}}
+          %% Slide the current node between both the nodes. Update the predecessor.
+            IsBetween ->
+              stabilize(CurrentPred, CurrentHash, {NewPredHash, NewPredPid});
+          %% Add the current node's successor as predeccessor
+            true ->
+              {notify_could_be_pred, {CurrentHash, self()}}
           end
       end
   end.
 
-main_loop(CurrentHash, Pred, Successor) ->
+%% Method that will trigger Random request some node in the network.
+initialize_trigger_request() ->
+  timer:send_interval(1000, send_storage_request).
+
+main_loop(CurrentHash, Pred, Successor, FingerTable) ->
   {SuccessorPid, SuccessorHash} = Successor,
   receive
-    %% Stabilise the predecessor and successor.
+  %% Stabilise the predecessor and successor.
     stabilize ->
+      io:format("Stabilize called"),
+
+      %% Stabilize will internally make call to main loop
       stabilize(Pred, CurrentHash, {SuccessorPid, SuccessorHash});
 
-    %% When a prospective predecessor requests to check if it could be a predecessor.
-    {notify_could_be_pred, {PredHash, PredPid}} ->
-      handle_pred_notification(Pred, CurrentHash, {PredHash, PredPid}, Successor);
+  %% Send storage request
+    send_storage_request ->
+      io:format("Send storage received"),
+      sup_pid ! {send_req, {CurrentHash, self()}},
 
-    %% When predecessor requests to know successor (current node's) predecessor.
+      %% Again listen for messages
+      main_loop(CurrentHash, Pred, Successor, FingerTable);
+
+  %% Message to store a new input -> Nothing But a request for hash table. If stored successfully send to the caller.
+    {hash_request, {Hash, Message, {CallerHash, CallerPid}, HopCount}} ->
+      io:format("Hash Request received ~p~n", [CurrentHash]),
+
+      IsKeyValidForCurrentNode = worker_utils:check_valid_key(CurrentHash, Hash, SuccessorHash),
+      if
+        IsKeyValidForCurrentNode ->
+          %% Assuming this node will store into its data store, we will intimate the original Caller of this request.
+          CallerPid ! {success_stored, {Hash, Message, {CurrentHash, self()}, HopCount}},
+
+          main_loop(CurrentHash, Pred, Successor, FingerTable);
+        true ->
+
+          % Check which next node to contact.
+          {NextHash, NextPid} = worker_utils:get_next_node(CurrentHash, Hash, FingerTable),
+
+          io:format("Node [~p] received to search for hash [~p]. But it forwarded to [~p]", [CurrentHash, Hash, NextHash]),
+
+          % Check to the next node in Finger table for the same message.
+          NextPid ! {hash_request, {Hash, Message, {CallerHash, CallerPid}, HopCount + 1}},
+
+          main_loop(CurrentHash, Pred, Successor, FingerTable)
+      end;
+
+  %% Caller Successfully Stored a request.
+    {success_stored, {Hash, Message, {StoredNodeHash, _StoredNodePid}, HopCount}} ->
+      io:format("Success stored"),
+
+      %% Send statistics information to the supervisor for calculating the average hop node.
+      sup_pid ! {success, {Hash, Message, StoredNodeHash, HopCount}},
+
+      %% Listen again
+      main_loop(CurrentHash, Pred, Successor, FingerTable);
+
+  %% Finger Table, receive updated finger table
+    {finger_table, NewFingerTable} ->
+      io:format("Finger Table Calculated for node [ ~p ] is  [~p]~n", [CurrentHash, orddict:to_list(NewFingerTable)]),
+      main_loop(CurrentHash, Pred, Successor, NewFingerTable);
+
+  %% When a prospective predecessor requests to check if it could be a predecessor.
+    {notify_could_be_pred, {PredHash, PredPid}} ->
+      handle_pred_notification(Pred, CurrentHash, {PredHash, PredPid}, Successor, FingerTable);
+
+  %% When predecessor requests to know successor (current node's) predecessor.
     {request_pred, {_CallerHash, CallerPid}} ->
 
       %% Reply to caller node with Predecessor.
       handle_pred_request(CallerPid, CurrentHash),
 
-      main_loop(CurrentHash, Pred, Successor)
+      main_loop(CurrentHash, Pred, Successor, FingerTable);
+
+  %% You
+  _ -> io:format("RISK - RANDOM MESSAGE APPEARED")
+  after 5000 ->
+    io:format("Node [~p] is idle for 5000 seconds", [CurrentHash]),
+
+    %% Send terminate id to the help,
+    sup_pid ! {terminate, {CurrentHash, self()}}
   end.
 
-main(CurrentHash) ->
+main(CurrentHash, _SupervisorPid) ->
+
   %% Console print that a new node is initialized
   io:format("~p Node started and it is waiting for successor~n", [CurrentHash]),
 
   %% Get the successor hash and successor PID from supervisor.
-  {{PredecessorHash, PredecessorPid},{SuccessorHash, SuccessorPid}} = wait_and_get_adj(),
+  {{PredecessorHash, PredecessorPid}, {SuccessorHash, SuccessorPid}} = wait_and_get_adj(),
 
   io:format("Hash [ ~p, ~p] obtained pev = [ ~p, ~p ] and succ = [~p, ~p]~n",
     [CurrentHash, self(),
-    PredecessorHash, PredecessorPid,
-    SuccessorHash, SuccessorPid]).
+      PredecessorHash, PredecessorPid,
+      SuccessorHash, SuccessorPid]),
 
-  %% Schedule stabilize to self in timer.
+%%   Schedule stabilize to self in timer.
 %%  initiate_self_stabilization(),
 
-  %% Got To Main Loop
-%%  main_loop(CurrentHash, {PredecessorHash, PredecessorPid}, {SuccessorHash, SuccessorPid}).
+  %% Initiate sending storage request to random nodes.
+  initialize_trigger_request(),
 
-%%  {{PrevHash, PrevPid}, {SuccHash, SuccPid}} = wait_and_get_adj(),
-%%  io:format("~p, ~p and ~p, ~p", [PrevHash, PrevPid, SuccHash, SuccPid]).
+%%   Got To Main Loop
+  main_loop(CurrentHash, {PredecessorHash, PredecessorPid}, {SuccessorHash, SuccessorPid}, orddict:new()).
+
 
 
